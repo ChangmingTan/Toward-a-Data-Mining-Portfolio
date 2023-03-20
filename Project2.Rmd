@@ -1,0 +1,102 @@
+---
+title: "Project-Two"
+output: html_document
+date: "2023-03-19"
+---
+
+```{r}
+library(caTools) 
+library(caret) 
+library(mice)
+library(e1071)
+library(rpart) 
+library(randomForest)
+
+# Load the mlbench package
+library(mlbench)
+
+# Load breast cancer dataset
+data("BreastCancer")
+
+# Exploring DataSet
+str(BreastCancer)
+
+# Finding the levels of target class
+levels(BreastCancer$Class)
+
+summary(BreastCancer)
+
+# Data Cleaning
+# Removing NA values and ID(1st column) from dataset using library mice
+dataset_impute <- mice(BreastCancer[,2:10],  print = FALSE) 
+
+# Adding Target class to the imputed dataset without NA
+BreastCancer <- cbind(BreastCancer[,11, drop = FALSE], mice::complete(dataset_impute, 1)) 
+
+summary(BreastCancer)
+
+# Splitting Dataset into training, test and to predict
+set.seed(150)    
+split=sample.split(BreastCancer, SplitRatio = 0.7)
+training_set=subset(BreastCancer,split==TRUE)
+test_set=subset(BreastCancer,split==FALSE)
+dim(training_set) 
+dim(test_set)
+topredict_set<-test_set[2:10]
+dim(topredict_set)
+
+# Model 1: Naive Bayes Classifier
+model_naive<- naiveBayes(Class ~ ., data = training_set)
+preds_naive <- predict(model_naive, newdata = topredict_set)
+(conf_matrix_naive <- table(preds_naive, test_set$Class))
+
+confusionMatrix(conf_matrix_naive) 
+
+# Model 2: Random Forest Classifier
+model_rf <- randomForest(Class ~ ., data = training_set, importance=TRUE, ntree = 5)
+
+preds_rf <- predict(model_rf, topredict_set)              
+
+(conf_matrix_forest <- table(preds_rf, test_set$Class))
+confusionMatrix(conf_matrix_forest)
+
+# Model 3: DecisionTree Classifier
+model_dtree<- rpart(Class ~ ., data=training_set)
+preds_dtree <- predict(model_dtree,newdata=topredict_set, type = "class")
+
+# plot(preds_dtree, main="Decision tree created using rpart")
+(conf_matrix_dtree <- table(preds_dtree, test_set$Class))
+
+confusionMatrix(conf_matrix_dtree)
+
+# Model 4: SVM Classifier
+model_svm <- svm(Class ~ ., data = training_set, kernel = "linear")
+preds_svm <- predict(model_svm, newdata = topredict_set)
+
+(conf_matrix_svm <- table(preds_svm, test_set$Class))
+confusionMatrix(conf_matrix_svm)
+
+# Combine the classifiers in an ensemble
+# Make predictions on the test set using each model
+preds_naive <- predict(model_naive, newdata = test_set[,2:10])
+preds_rf <- predict(model_rf, newdata = test_set[,2:10])
+preds_dtree <- predict(model_dtree, newdata = test_set[,2:10], type = "class")
+preds_svm <- predict(model_svm, newdata = test_set[,2:10])
+
+# Combine the predictions using majority voting
+ensemble_preds <- ifelse(rowSums(cbind(preds_naive == "M", 
+                                      preds_rf == "M", 
+                                      preds_dtree == "M", 
+                                      preds_svm == "M")) >= 2, "M", "B")
+
+# Convert both variables into factors with the same levels
+ensemble_preds <- factor(ensemble_preds, levels = c("B", "M"))
+test_set$Class <- factor(test_set$Class, levels = c("B", "M"))
+
+# Evaluate the performance of the ensemble classifier
+conf_matrix_ensemble <- table(ensemble_preds, test_set$Class)
+confusionMatrix(ensemble_preds, test_set$Class)
+
+
+```
+
